@@ -1,0 +1,20 @@
+FROM node:20-alpine
+WORKDIR /app
+
+# Set node env to production for packages
+ENV NODE_ENV=production
+
+# Install dependencies (requires prisma folder for postinstall client generation)
+COPY package*.json ./
+COPY prisma ./prisma/
+# Install both dependencies and devDependencies (like ts-node, typescript) to run TS files
+RUN npm ci --omit=peer
+
+# Copy application files
+COPY . .
+
+# Generate the Prisma Client
+RUN npx prisma generate
+
+# Worker is a background container; no ports exposed
+CMD ["npx", "ts-node", "workers/webhook-worker.ts"]

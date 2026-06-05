@@ -1,0 +1,106 @@
+import { Code, Terminal, Webhook } from 'lucide-react';
+
+export default function ApiDocsPage() {
+  return (
+    <div className="space-y-12 max-w-3xl py-4">
+      <div className="space-y-4">
+        <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground">Custom API & Webhooks</h1>
+        <p className="text-lg text-muted-foreground leading-relaxed">
+          Integrate our AI-powered auto-responder directly into your own applications, SaaS platforms, or custom chat interfaces.
+        </p>
+      </div>
+
+      {/* Section 1: Authentication */}
+      <section id="auth" className="space-y-6 scroll-mt-24">
+        <div className="flex items-center gap-3 pb-2 border-b border-border">
+          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+            <Terminal className="w-4 h-4 text-indigo-500" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">1. Authentication</h2>
+        </div>
+        <div className="prose prose-invert max-w-none">
+          <p className="text-muted-foreground">
+            All API requests must be authenticated using a Bearer token. You can generate your secret API key from the <strong>Integrations</strong> dashboard.
+          </p>
+          <div className="bg-surface border border-border rounded-xl p-4 mt-4 font-mono text-sm overflow-x-auto">
+            <span className="text-emerald-400">Authorization:</span> Bearer sk_live_YOUR_API_KEY
+          </div>
+        </div>
+      </section>
+
+      {/* Section 2: Sending Messages */}
+      <section id="sending" className="space-y-6 scroll-mt-24">
+        <div className="flex items-center gap-3 pb-2 border-b border-border">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+            <Code className="w-4 h-4 text-emerald-500" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">2. Sending Messages (Incoming)</h2>
+        </div>
+        <div className="prose prose-invert max-w-none">
+          <p className="text-muted-foreground">
+            When a user sends a message on your platform, you should forward it to our API. Our AI will process it and generate a reply.
+          </p>
+          
+          <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mt-6 mb-3">Endpoint</h3>
+          <div className="flex items-center gap-3 bg-surface border border-border rounded-xl p-4 font-mono text-sm overflow-x-auto">
+            <span className="px-2 py-1 rounded bg-indigo-500/20 text-indigo-400 font-bold">POST</span>
+            <span>https://inboxkura.vercel.app/api/v1/messages</span>
+          </div>
+
+          <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mt-6 mb-3">Request Payload</h3>
+          <pre className="bg-surface border border-border rounded-xl p-4 font-mono text-sm overflow-x-auto text-foreground">
+{`{
+  "contactId": "user_12345", // Required: Unique ID of the user on your system
+  "text": "Hello, how much does the Pro plan cost?", // Required: Message text
+  "contactName": "John Doe", // Optional
+  "avatarUrl": "https://example.com/avatar.png", // Optional
+  "tags": ["premium", "lead"] // Optional
+}`}
+          </pre>
+
+          <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mt-6 mb-3">cURL Example</h3>
+          <pre className="bg-surface border border-border rounded-xl p-4 font-mono text-sm overflow-x-auto text-foreground">
+{`curl -X POST https://inboxkura.vercel.app/api/v1/messages \\
+  -H "Authorization: Bearer sk_live_YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "contactId": "user_12345",
+    "text": "I need help with my account."
+  }'`}
+          </pre>
+        </div>
+      </section>
+
+      {/* Section 3: Receiving Replies */}
+      <section id="webhooks" className="space-y-6 scroll-mt-24">
+        <div className="flex items-center gap-3 pb-2 border-b border-border">
+          <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
+            <Webhook className="w-4 h-4 text-rose-500" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">3. Receiving Replies (Outbound Webhook)</h2>
+        </div>
+        <div className="prose prose-invert max-w-none">
+          <p className="text-muted-foreground">
+            When our AI or your human agents reply to a message, we will send an HTTP <code>POST</code> request to your configured <strong>Outbound Webhook URL</strong>.
+          </p>
+
+          <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mt-6 mb-3">Webhook Payload Format</h3>
+          <pre className="bg-surface border border-border rounded-xl p-4 font-mono text-sm overflow-x-auto text-foreground">
+{`{
+  "recipient_id": "user_12345", // The contactId you provided earlier
+  "text": "Our Pro plan costs $29/month.", // The reply generated by AI/Agent
+  "timestamp": "2026-06-04T12:00:00.000Z"
+}`}
+          </pre>
+
+          <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 mt-6">
+            <h4 className="font-bold text-rose-500 mb-2">Important Note</h4>
+            <p className="text-sm text-rose-400/90 m-0">
+              Ensure your webhook endpoint returns a <code>200 OK</code> status code quickly to acknowledge receipt. If your server is unreachable or returns an error, the message will fail to deliver.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

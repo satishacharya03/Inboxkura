@@ -1,0 +1,225 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Platform {
+  FB
+  IG
+  WA
+  TIKTOK
+  TELEGRAM
+  CUSTOM
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MANAGER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?
+  name      String?
+  aiPersona String?  // "professional" | "warm" | "sales"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships      OrgMember[]
+  sentInvites      Invite[]
+  replies          Message[]         @relation("RepliedBy")
+  ticketActivities TicketActivity[]
+  pushSubscriptions PushSubscription[]
+}
+
+model Organization {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  knowledgeBase  Json?    // Stores { legalName, tagline, website, supportEmail, supportPhone, hours, about, faqs, updates, address }
+  aiLanguage           String         @default("Auto-detect")
+  audioTranscriptions  Boolean        @default(true)
+  imageUnderstanding   Boolean        @default(true)
+  handoffTriggers      String[]       @default([])
+  autoCreateTicket     Boolean        @default(true)
+  slackWebhookUrl      String?        // Slack incoming webhook URL for handoff notifications
+  apiWebhookUrl        String?        // Webhook URL for Private Chat API
+  apiKey               String?        @unique // Developer API key
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  members         OrgMember[]
+  platformConfigs PlatformConfig[]
+  contacts        Contact[]
+  messages        Message[]
+  invites         Invite[]
+  tickets         Ticket[]
+  cannedResponses CannedResponse[]
+}
+
+model OrgMember {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String
+  role      OrgRole
+  createdAt DateTime @default(now())
+
+  org  Organization @relation(fields: [orgId],  references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+}
+
+model Invite {
+  id          String       @id @default(cuid())
+  orgId       String
+  email       String
+  role        OrgRole      @default(MANAGER)
+  token       String       @unique @default(cuid())
+  status      InviteStatus @default(PENDING)
+  invitedById String
+  expiresAt   DateTime
+  createdAt   DateTime     @default(now())
+
+  org       Organization @relation(fields: [orgId],       references: [id], onDelete: Cascade)
+  invitedBy User         @relation(fields: [invitedById], references: [id])
+}
+
+model PlatformConfig {
+  id              String   @id @default(cuid())
+  platform        Platform
+  orgId           String
+  verifyToken     String
+  accessToken     String?
+  pageId          String?
+  connectionId    String?
+  connectedName   String?
+  connectedEmail  String?
+  connectedAvatar String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, platform])
+}
+
+model Contact {
+  id                   String    @id @default(cuid())
+  orgId                String
+  platform             Platform
+  platformId           String
+  name                 String?
+  avatarUrl            String?
+  aiPersona            String?   // Optional custom instructions / persona rules processed by AI for this contact
+  autoRespond          Boolean   @default(true)
+  conversationContext  String?   // AI-maintained rolling summary of conversation history for memory
+  lastContextUpdatedAt DateTime? // When the context was last auto-updated
+  businessNotes        String?   // JSON: AI-extracted business insights (intent, issues, follow-up needed)
+  internalNotes        String?   // Manual agent notes about this contact
+  status               String    @default("ACTIVE") // "ACTIVE" | "SNOOZED" | "ARCHIVED"
+  assignedUserId       String?   // User ID of assigned agent
+  tags                 String[]  @default([]) // Customer tags for segmentation
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  tickets      Ticket[]
+
+  @@unique([orgId, platform, platformId])
+  @@index([orgId, status])
+  @@index([orgId, updatedAt(sort: Desc)])
+}
+
+model Message {
+  id               String   @id @default(cuid())
+  platform         Platform
+  text             String
+  imageUrl         String?
+  audioUrl         String?
+  videoUrl         String?
+  timestamp        DateTime @default(now())
+  isOutbound       Boolean  @default(false)
+  isRead           Boolean  @default(false)
+  aiCategory       String?
+  isAiReply        Boolean  @default(false)
+
+
+  contactId   String
+  contact     Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  repliedById String?
+  repliedBy   User?        @relation("RepliedBy", fields: [repliedById], references: [id])
+  platformMessageId String?
+  reaction String?
+
+  @@index([contactId, timestamp(sort: Desc)])
+  @@index([orgId, platform, platformMessageId])
+
+model Ticket {
+  id           String   @id @default(cuid())
+  contactId    String
+  contact      Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  subject      String
+  description  String?
+  status       String   @default("Open") // "Open" | "In Progress" | "Resolved"
+  priority     String   @default("Medium") // "Low" | "Medium" | "High" | "Urgent"
+  customFields Json?    // Merchant-defined key-value fields
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  activities   TicketActivity[]
+
+  @@index([orgId, status])
+  @@index([contactId])
+}
+
+model TicketActivity {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  type      String   // "status_change" | "comment" | "assignment" | "created"
+  content   String
+  createdAt DateTime @default(now())
+}
+
+model CannedResponse {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  shortcut  String   // e.g. "hello"
+  content   String   // e.g. "Hi {name}, how can I help?"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PushSubscription {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint     String   @unique
+  p256dh       String
+  auth         String
+  createdAt    DateTime @default(now())
+}

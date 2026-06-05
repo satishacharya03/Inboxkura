@@ -17,4 +17,4 @@ COPY . .
 RUN npx prisma generate
 
 # Worker is a background container; no ports exposed
-CMD ["npx", "ts-node", "workers/webhook-worker.ts"]
+CMD ["npx", "tsx", "workers/webhook-worker.ts"]

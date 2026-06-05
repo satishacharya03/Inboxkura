@@ -1,5 +1,13 @@
 version: '3.8'
 
+# ─── LOW-RESOURCE VPS OPTIMIZED (1GB RAM) ───
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # 1. Primary PostgreSQL Database Engine
   postgres:
@@ -9,23 +17,35 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: your_secure_db_password
       POSTGRES_DB: reply_ai
+    # Extremely aggressive memory tuning for 1GB RAM VPS
+    command: >
+      postgres 
+      -c shared_buffers=32MB 
+      -c work_mem=4MB 
+      -c maintenance_work_mem=16MB
+      -c max_connections=50
     volumes:
       - pg_data:/var/lib/postgresql/data
     networks:
       - reply_network
     ports:
-      - "5432:5432" # Exposed locally; can be blocked/commented out for strict isolation
+      - "5432:5432"
     restart: always
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 150M
 
-  # 2. Connection Pooler (PgBouncer) for scaling database transactions
+  # 2. Connection Pooler (PgBouncer)
   pgbouncer:
     image: edoburu/pgbouncer:latest
     container_name: reply_pgbouncer
     environment:
       - DATABASE_URL=postgresql://postgres:your_secure_db_password@postgres:5432/reply_ai
       - POOL_MODE=transaction
-      - MAX_CLIENT_CONN=1000
-      - DEFAULT_POOL_SIZE=25
+      - MAX_CLIENT_CONN=200
+      - DEFAULT_POOL_SIZE=10
     ports:
       - "6432:6432"
     networks:
@@ -33,21 +53,32 @@ services:
     depends_on:
       - postgres
     restart: always
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 30M
 
-  # 3. Redis broker for BullMQ job queues & WebSockets state
+  # 3. Redis broker for BullMQ & WebSockets
   redis:
     image: redis:7-alpine
     container_name: reply_redis
-    command: redis-server --appendonly yes --save ""
+    # Restrict Redis memory usage and eviction policy
+    command: redis-server --appendonly yes --save "" --maxmemory 50mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     networks:
       - reply_network
     ports:
-      - "6379:6379" # Exposed locally; can be isolated internally
+      - "6379:6379"
     restart: always
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 80M
 
-  # 4. Automated Database Schema Initialization (Runs once on startup)
+  # 4. Automated Database Schema Initialization
   db-init:
     build:
       context: .
@@ -55,11 +86,13 @@ services:
     container_name: reply_db_init
     environment:
       - DATABASE_URL=postgresql://postgres:your_secure_db_password@postgres:5432/reply_ai?connection_limit=2
+      - NODE_OPTIONS=--max-old-space-size=256
     command: npx prisma db push --accept-data-loss
     networks:
       - reply_network
     depends_on:
       - postgres
+    logging: *default-logging
 
   # 5. Next.js App Router (Frontend Web App & REST APIs)
   nextjs-app:
@@ -68,7 +101,7 @@ services:
       dockerfile: Dockerfile
     container_name: reply_nextjs_app
     environment:
-      - DATABASE_URL=postgresql://postgres:your_secure_db_password@pgbouncer:6432/reply_ai?pgbouncer=true&connection_limit=10
+      - DATABASE_URL=postgresql://postgres:your_secure_db_password@pgbouncer:6432/reply_ai?pgbouncer=true&connection_limit=4
       - DIRECT_URL=postgresql://postgres:your_secure_db_password@postgres:5432/reply_ai?connection_limit=2
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your_jwt_secret_change_me
@@ -76,6 +109,7 @@ services:
       - FACEBOOK_APP_SECRET=your_facebook_app_secret_here
       - META_VERIFY_TOKEN=your_meta_verify_token_here
       - META_GRAPH_VERSION=v22.0
+      - NODE_OPTIONS=--max-old-space-size=256
     ports:
       - "3000:3000"
     networks:
@@ -88,8 +122,13 @@ services:
       db-init:
         condition: service_completed_successfully
     restart: always
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 300M
 
-  # 6. Standalone WebSocket Server (Real-time Broadcaster)
+  # 6. Standalone WebSocket Server
   websocket-server:
     build:
       context: ./websocket-server
@@ -100,6 +139,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your_jwt_secret_change_me
       - NEXT_PUBLIC_APP_URL=*
+      - NODE_OPTIONS=--max-old-space-size=128
     ports:
       - "4000:4000"
     networks:
@@ -110,21 +150,27 @@ services:
       db-init:
         condition: service_completed_successfully
     restart: always
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 150M
 
-  # 7. BullMQ Worker Node (Background Job Consumer)
+  # 7. BullMQ Worker Node
   bullmq-worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
     container_name: reply_bullmq_worker
     environment:
-      - DATABASE_URL=postgresql://postgres:your_secure_db_password@pgbouncer:6432/reply_ai?pgbouncer=true&connection_limit=15
+      - DATABASE_URL=postgresql://postgres:your_secure_db_password@pgbouncer:6432/reply_ai?pgbouncer=true&connection_limit=4
       - REDIS_URL=redis://redis:6379
       - GEMINI_API_KEY=your_gemini_api_key_here
       - FACEBOOK_APP_SECRET=your_facebook_app_secret_here
       - META_VERIFY_TOKEN=your_meta_verify_token_here
       - META_GRAPH_VERSION=v22.0
-      - WORKER_CONCURRENCY=10
+      - WORKER_CONCURRENCY=2 # Lowered for low-resource environments
+      - NODE_OPTIONS=--max-old-space-size=256
     networks:
       - reply_network
     depends_on:
@@ -135,6 +181,11 @@ services:
       db-init:
         condition: service_completed_successfully
     restart: always
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 300M
 
 volumes:
   pg_data:

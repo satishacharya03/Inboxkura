@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy123456789');
 
 const FROM_EMAIL = 'noreply@satish.com.np';
 const APP_NAME = 'InboxKura';

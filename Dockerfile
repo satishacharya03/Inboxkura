@@ -5,7 +5,7 @@ WORKDIR /app
 # Install dependencies (including Prisma)
 COPY package*.json ./
 COPY prisma ./prisma/
-ENV NODE_OPTIONS="--max-old-space-size=512"
+ENV NODE_OPTIONS="--max-old-space-size=256"
 RUN npm ci
 
 # Copy application files

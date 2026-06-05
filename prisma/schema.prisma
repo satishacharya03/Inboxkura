@@ -6,7 +6,6 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 enum Platform {
@@ -172,6 +171,7 @@ model Message {
 
   @@index([contactId, timestamp(sort: Desc)])
   @@index([orgId, platform, platformMessageId])
+}
 
 model Ticket {
   id           String   @id @default(cuid())

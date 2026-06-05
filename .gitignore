@@ -18,6 +18,7 @@
 /out/
 .github/
 .reference/
+.refrence/
 
 # production
 /build

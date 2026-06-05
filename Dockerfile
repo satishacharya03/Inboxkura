@@ -3,12 +3,10 @@ WORKDIR /app
 
 # Enable Next.js experimental memory restrictions and standalone build
 ENV NODE_ENV=production
-ENV NODE_OPTIONS="--max-old-space-size=256"
-
 # Install all dependencies (including devDependencies like tsx for workers)
 COPY package*.json ./
 COPY prisma ./prisma/
-RUN npm ci --include=dev
+RUN npm install
 
 # Copy the entire source code (since workers and websockets need their raw TS files)
 COPY . .
@@ -17,6 +15,7 @@ COPY . .
 RUN npx prisma generate
 
 # Build Next.js
+ENV NODE_OPTIONS="--max-old-space-size=256"
 RUN npm run build
 
 # Expose Next.js and WebSocket ports

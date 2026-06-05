@@ -9,7 +9,6 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
-  # 1. Primary PostgreSQL Database Engine
   postgres:
     image: postgres:15-alpine
     container_name: reply_postgres
@@ -17,7 +16,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: your_secure_db_password
       POSTGRES_DB: reply_ai
-    # Extremely aggressive memory tuning for 1GB RAM VPS
     command: >
       postgres 
       -c shared_buffers=32MB 
@@ -37,7 +35,6 @@ services:
         limits:
           memory: 150M
 
-  # 2. Connection Pooler (PgBouncer)
   pgbouncer:
     image: edoburu/pgbouncer:latest
     container_name: reply_pgbouncer
@@ -59,11 +56,9 @@ services:
         limits:
           memory: 30M
 
-  # 3. Redis broker for BullMQ & WebSockets
   redis:
     image: redis:7-alpine
     container_name: reply_redis
-    # Restrict Redis memory usage and eviction policy
     command: redis-server --appendonly yes --save "" --maxmemory 50mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -78,27 +73,13 @@ services:
         limits:
           memory: 80M
 
-  # 4. Automated Database Schema Initialization
-  db-init:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    container_name: reply_db_init
-    environment:
-      - DATABASE_URL=postgresql://postgres:your_secure_db_password@postgres:5432/reply_ai?connection_limit=2
-      - NODE_OPTIONS=--max-old-space-size=256
-    command: npx prisma db push --accept-data-loss
-    networks:
-      - reply_network
-    depends_on:
-      - postgres
-    logging: *default-logging
-
-  # 5. Next.js App Router (Frontend Web App & REST APIs)
   nextjs-app:
+    # ── SINGLE BUILD CONTEXT ──
+    # By defining the build only here, all other Node services will wait and use this exact image.
     build:
       context: .
       dockerfile: Dockerfile
+    image: reply_unified_image
     container_name: reply_nextjs_app
     environment:
       - DATABASE_URL=postgresql://postgres:your_secure_db_password@pgbouncer:6432/reply_ai?pgbouncer=true&connection_limit=4
@@ -110,6 +91,7 @@ services:
       - META_VERIFY_TOKEN=your_meta_verify_token_here
       - META_GRAPH_VERSION=v22.0
       - NODE_OPTIONS=--max-old-space-size=256
+    command: npm start
     ports:
       - "3000:3000"
     networks:
@@ -128,11 +110,21 @@ services:
         limits:
           memory: 300M
 
-  # 6. Standalone WebSocket Server
+  db-init:
+    image: reply_unified_image
+    container_name: reply_db_init
+    environment:
+      - DATABASE_URL=postgresql://postgres:your_secure_db_password@postgres:5432/reply_ai?connection_limit=2
+      - NODE_OPTIONS=--max-old-space-size=256
+    command: npx prisma db push --accept-data-loss
+    networks:
+      - reply_network
+    depends_on:
+      - postgres
+    logging: *default-logging
+
   websocket-server:
-    build:
-      context: ./websocket-server
-      dockerfile: Dockerfile
+    image: reply_unified_image
     container_name: reply_ws_server
     environment:
       - WS_PORT=4000
@@ -140,6 +132,7 @@ services:
       - JWT_SECRET=your_jwt_secret_change_me
       - NEXT_PUBLIC_APP_URL=*
       - NODE_OPTIONS=--max-old-space-size=128
+    command: npx tsx websocket-server/server.ts
     ports:
       - "4000:4000"
     networks:
@@ -156,11 +149,8 @@ services:
         limits:
           memory: 150M
 
-  # 7. BullMQ Worker Node
   bullmq-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: reply_unified_image
     container_name: reply_bullmq_worker
     environment:
       - DATABASE_URL=postgresql://postgres:your_secure_db_password@pgbouncer:6432/reply_ai?pgbouncer=true&connection_limit=4
@@ -169,8 +159,9 @@ services:
       - FACEBOOK_APP_SECRET=your_facebook_app_secret_here
       - META_VERIFY_TOKEN=your_meta_verify_token_here
       - META_GRAPH_VERSION=v22.0
-      - WORKER_CONCURRENCY=2 # Lowered for low-resource environments
+      - WORKER_CONCURRENCY=2
       - NODE_OPTIONS=--max-old-space-size=256
+    command: npx tsx workers/webhook-worker.ts
     networks:
       - reply_network
     depends_on:

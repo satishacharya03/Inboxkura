@@ -1,41 +1,27 @@
-# Stage 1: Install dependencies and build the application
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 WORKDIR /app
 
-# Install dependencies (including Prisma)
+# Enable Next.js experimental memory restrictions and standalone build
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=256"
+
+# Install all dependencies (including devDependencies like tsx for workers)
 COPY package*.json ./
 COPY prisma ./prisma/
-ENV NODE_OPTIONS="--max-old-space-size=256"
-RUN npm ci
+RUN npm ci --include=dev
 
-# Copy application files
+# Copy the entire source code (since workers and websockets need their raw TS files)
 COPY . .
 
-# Generate the Prisma Client
+# Generate Prisma Client
 RUN npx prisma generate
 
-# Build Next.js in standalone mode
+# Build Next.js
 RUN npm run build
 
-# Stage 2: Clean production image
-FROM node:20-alpine AS runner
-WORKDIR /app
-
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-# Create a non-root system user for security
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-# Copy only the standalone output and public files
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-USER nextjs
-
+# Expose Next.js and WebSocket ports
 EXPOSE 3000
+EXPOSE 4000
 
-CMD ["node", "server.js"]
+# Default command will be overridden by docker-compose for each service
+CMD ["npm", "start"]

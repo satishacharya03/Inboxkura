@@ -2,13 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error(
-    'DATABASE_URL is not set. Add it to .env.local (see .env for reference).'
-  );
-}
+// Use a dummy connection string during Next.js static build phase if missing
+const connectionString = process.env.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy';
 
 // Configure connection pooling options dynamically for development and VPS/Docker environments
 const isProduction = process.env.NODE_ENV === 'production';

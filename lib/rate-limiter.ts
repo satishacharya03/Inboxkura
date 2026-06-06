@@ -1,17 +1,18 @@
 import Redis from 'ioredis';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const isBuild = process.env.npm_lifecycle_event === 'build' || process.env.NEXT_PHASE === 'phase-production-build';
 
 // Share a single Redis connection in development hot-reloads
 const globalForRedisLimiter = global as unknown as { redisLimiter: Redis };
 
 export const redisLimiter =
   globalForRedisLimiter.redisLimiter ||
-  new Redis(REDIS_URL, {
+  (isBuild ? ({} as any) : new Redis(REDIS_URL, {
     maxRetriesPerRequest: null,
-  });
+  }));
 
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' && !isBuild) {
   globalForRedisLimiter.redisLimiter = redisLimiter;
 }
 
